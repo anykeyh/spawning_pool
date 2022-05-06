@@ -111,7 +111,7 @@ RSpec.describe SpawningPool do
               ichannel << value # give to the other thread
               sleep 0.001
             end
-          rescue SpawningPool::FiberChannel::ClosedError
+          rescue SpawningPool::Channel::ClosedError
             break # do nothing
           end
         end

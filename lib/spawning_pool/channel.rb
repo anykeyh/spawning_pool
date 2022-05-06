@@ -1,5 +1,5 @@
 class SpawningPool
-  class FiberChannel
+  class Channel
     class ClosedError < RuntimeError; end
 
     def initialize(capacity: 0)

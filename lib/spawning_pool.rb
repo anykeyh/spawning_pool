@@ -1,15 +1,15 @@
 # frozen_string_literal: true
 
 require_relative "spawning_pool/version"
+
 require_relative "spawning_pool/thread_mutex"
-require_relative "spawning_pool/thread_channel"
+
 require_relative "spawning_pool/selector"
 require_relative "spawning_pool/scheduler"
-require_relative "spawning_pool/fiber_channel"
+require_relative "spawning_pool/channel"
+require_relative "spawning_pool/thread"
 
 class SpawningPool
-  class_eval{ attr_reader :instance }
-
   attr_reader :threads
 
   def initialize(join, &block)
@@ -29,13 +29,7 @@ class SpawningPool
   end
 
   def spawn_thread(name = nil, &block)
-    t = Thread.new do
-      scheduler = SpawningPool::Scheduler.new(self)
-      Fiber.set_scheduler scheduler
-      scheduler.fiber(&block)
-      scheduler.run
-    end
-
+    t = SpawningPool::Thread.new(self, &block)
     @spawned_threads << t
 
     t.name = name || "spawning_pool #{(@thread_id += 1)}"
@@ -50,7 +44,7 @@ class SpawningPool
         Fiber.scheduler.fiber do
           loop do
             yield channel.receive
-          rescue SpawningPool::FiberChannel::ClosedError
+          rescue SpawningPool::Channel::ClosedError
             break
           end
         end
@@ -59,7 +53,7 @@ class SpawningPool
   end
 
   def self.channel(capacity: 0)
-    SpawningPool::FiberChannel.new(capacity: capacity)
+    SpawningPool::Channel.new(capacity: capacity)
   end
 
   def channel(capacity: 0)
@@ -70,6 +64,9 @@ class SpawningPool
     Fiber.scheduler.timeout(time, &block)
   end
 
+  def self.current
+    Fiber.scheduler.spawning_pool
+  end
 end
 
 def SpawningPool(join = true, &block)

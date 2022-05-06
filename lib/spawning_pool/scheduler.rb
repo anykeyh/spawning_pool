@@ -20,9 +20,7 @@ class SpawningPool
       end
     end
 
-
     attr_reader :thread, :loop, :spawning_pool
-
 
     def initialize(spawning_pool)
       @loop = Fiber.current

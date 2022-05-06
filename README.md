@@ -1,34 +1,157 @@
 # SpawningPool
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/spawning_pool`. To experiment with that code, run `bin/console` for an interactive prompt.
+A very simple to use Fiber and Fiber Scheduler for Ruby 3.0+.
 
-TODO: Delete this and the text above, and describe your gem
+- Use goroutine channel concept to communicate between fibers.
+- Channel should be thread-safe and could be used to communicate between threads. (thus, this is experimental)
+- Easy to use worker pool (see example below)
 
-## Installation
+## Getting started
 
-Add this line to your application's Gemfile:
-
-```ruby
-gem 'spawning_pool'
+```bash
+$ gem install spawning_pool
 ```
 
-And then execute:
+Then a quick example:
 
-    $ bundle install
+```ruby
+require "spawning_pool"
 
-Or install it yourself as:
+SpawningPool do
+    channel = pool.channel
 
-    $ gem install spawning_pool
+    pool.spawn(channel) do |value|
+        puts "received: #{value}"
+    end
 
-## Usage
+    channel << "a bunch of zerglings"
+end
+```
 
-TODO: Write usage instructions here
+### `spawn` method
 
-## Development
+Spawn one (or more fibers):
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake spec` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+```ruby
+pool.spawn do
+    # Spawn and run the fiber now
+    puts "this is a fiber"
+    # The fiber won't keep the hand on IO operations...
+    open("http://www.ruby-lang.org/") {|f|
+        f.each_line {|line| p line}
+    }
+end
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and the created tag, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+# so you can perform other operations in the mean time
+pool.spawn do
+    loop do
+        puts "perform other operation..."
+        sleep 0.1
+    end
+end
+
+# using optional channel as entry point for your spawner will run the code
+# everytime a message is received:
+
+channel = pool.channel
+
+# default worker count is 1, meaning non parallel processing of the messages
+# of the channel.
+pool.spawn(channel, workers: 32) do |message|
+    puts "I received a message: #{message}"
+    sleep 1
+end
+
+32.times{ |x| channel << "here you are #{x}" }
+# will run in ~1 second because of 32 workers.
+```
+
+### `channel` method
+
+```ruby
+# A channel is a pipe to communicate between fibers/thread.
+channel = pool.channel(capacity: 10)
+
+# you can send a message:
+channel.push "a message"
+channel << "another way of pushing"
+
+# then you can receive the message in another fiber
+output = channel.receive
+
+# By default, a channel has capacity of `0` (infinite).
+#
+# You can setup a capacity which will block the pusher until
+# receiver consume messages.
+#
+# if your channel is full, the current fiber stop running.
+# So don't forget to always have a consumer !
+#
+10.times{ channel << "spam" } # woops the code will stuck indefinitely, no consumers!
+
+spawn { # Let's fix this by adding a consumer
+    begin
+        while message = channel.receive
+            # perform some operation here.
+        end
+    end
+}
+
+# Channel can be closed:
+channel.close
+# Consumers will run until the remaining messages in channel are consumed.
+# No new message can be pushed:
+channel << "a new message" # SpawningPool::Channel::ClosedError !
+
+# Using spawn(channel) do ... end syntax as above, we handle directly the close
+# event :
+
+spawn(channel) do |message|
+    perform_operation(message)
+end
+
+channel << "one operation" << "and we're good!"
+channel.close # The spawner above will automatically stop. There is nothing to do
+```
+## `spawn_thread` method
+
+```ruby
+# Like spawn, but will create a Thread instead of a fiber.
+# The name is optional
+pool.spawn_thread "a cool thread name" do
+    spawn do
+        # This fiber lives into the thread above
+    end
+end
+
+# What is the interest then? For dealing with non-io or blocking operations,
+# legacy ruby setup and so on...
+```
+
+## `timeout` method
+
+```ruby
+# You should not use the standard Timeout method when using SpawningPool, but instead:
+
+SpawningPool do
+    timeout(2.0) do
+        long_task_might_fail
+    end
+rescue Timeout::Error
+    puts "cannot finish under 2 seconds!"
+end
+
+# Note that due to the cooperative design of fibers, in such case 2 seconds would
+# be "at least 2 seconds". If a fiber is keeping hand, the timeout might be
+# triggered much later or even never (in which case your code has a problem).
+```
+
+## Mentions
+
+- The selector is [forked from here](https://raw.githubusercontent.com/socketry/event/ee7f6bfa0b4a1df20af91639a73a23a241238a2c/lib/event/selector/select.rb)
+- The scheduler is also deeply inspired and partially copied from the Async project
+- [Async](https://github.com/socketry/async) is a great alternative to SpawningPool (both projects are not compatible).
+- I wanted however to provide a much simpler alternative to Async which provide way more features.
 
 ## Contributing
 
