@@ -236,8 +236,6 @@ class SpawningPool
         readables = @readable.keys
         readables <<  @intr_io_r
 
-        puts "READ #{Thread.current.name} #{duration}"
-
         readable, writable, = ::IO.select(readables, @writable.keys, nil, duration)
       rescue IOError, Errno::EBADF => e
         pp e

@@ -3,7 +3,7 @@ class SpawningPool
     class ClosedError < RuntimeError; end
 
     def initialize(capacity: 0)
-      @messages = []
+      @messages = Queue.new
       @pushers = Queue.new
       @receivers = Queue.new
       @capacity = capacity
@@ -15,9 +15,7 @@ class SpawningPool
     end
 
     def wakeup(fiber_pool)
-      return if fiber_pool.empty?
-
-      fiber = fiber_pool.pop
+      fiber = fiber_pool.pop(true) rescue return
 
       Scheduler.for(fiber).unblock(nil, fiber)
     end
@@ -53,60 +51,42 @@ class SpawningPool
 
       flush
 
-      pushers = @pushers
-      @pushers = []
+      @pushers.close
+      @receivers.close
 
-      receivers = @receivers
-      @receivers = []
-
-      [pushers, receivers].each do |arr|
-        until arr.empty?
-          fiber = arr.pop
+      [@pushers, @receivers].each do |arr|
+        loop do
+          fiber = arr.pop(true)
           Scheduler.for(fiber).raise(fiber, ClosedError)
+        rescue ThreadError
+          break
         end
       end
     end
 
     def push(message)
-      puts "#{Thread.current.name} > push #{message}"
-      @pusher_mutex.synchronize do
-        puts "#{Thread.current.name} > got push lock"
+      raise ClosedError if closed?
 
-        raise ClosedError if closed?
+      # There is case where the fiber can resume but the message queue is
+      # still full due to scheduler waking up twice.
+      wait_as @pushers while full?
 
-        # There is case where the fiber can resume but the message queue is
-        # still full due to scheduler waking up twice.
-        wait_as @pushers while full?
-
-        @messages << message
-      end
-
-      puts "#{Thread.current.name} > push done. Wake up receivers"
+      @messages << message
 
       wakeup @receivers
-
-      puts "#{Thread.current.name} > push all done."
 
       self
     end
 
     def receive
-      puts "#{Thread.current.name} > rcv"
-      msg = @receiver_mutex.synchronize do
-        puts "#{Thread.current.name} > acquired rcv lock"
-        while empty?
-          raise ClosedError if closed?
-          wait_as @receivers
-        end
-
-        @messages.shift
+      while empty?
+        raise ClosedError if closed?
+        wait_as @receivers
       end
 
-      puts "#{Thread.current.name} > rcv done"
+      msg = @messages.shift
 
       wakeup @pushers
-
-      puts "#{Thread.current.name} > wakeup pushers done"
 
       msg
     end

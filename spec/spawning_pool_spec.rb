@@ -82,14 +82,11 @@ RSpec.describe SpawningPool do
             ichannel << x
             sleep 0.01
           }
-          puts "finished sending message"
           ichannel.close
-          puts "channel is closed"
         end
 
         pool.spawn_thread "receiver_thread" do
           pool.spawn(ichannel, workers: 32) do |value|
-            puts "received #{value}"
             sum += value
             sleep(0.01)
           end
@@ -108,12 +105,11 @@ RSpec.describe SpawningPool do
           loop do
             value = ichannel.receive
 
-            puts value
-
             if value & 1 == 1
               ichannel << (3*value + 1)
             else
               ichannel << value # give to the other thread
+              sleep 0.001
             end
           rescue SpawningPool::FiberChannel::ClosedError
             break # do nothing
@@ -124,8 +120,6 @@ RSpec.describe SpawningPool do
           loop do
             value = ichannel.receive
 
-            puts value
-
             if value == 1
               ichannel.close
               break
@@ -135,6 +129,7 @@ RSpec.describe SpawningPool do
               ichannel << value / 2
             else
               ichannel << value
+              sleep 0.001
             end
           end
         end
