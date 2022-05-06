@@ -3,15 +3,13 @@ class SpawningPool
     class ClosedError < RuntimeError; end
 
     def initialize(capacity: 0)
-      @messages = Queue.new
-      @pushers = Queue.new
-      @receivers = Queue.new
-      @capacity = capacity
-      @closed = false
+      @capacity   = capacity
+      @closed     = false
 
-      # for multithreading purpose
-      @receiver_mutex = ThreadMutex.new
-      @pusher_mutex = ThreadMutex.new
+      @messages   = Queue.new
+
+      @pushers    = Queue.new
+      @receivers  = Queue.new
     end
 
     def wakeup(fiber_pool)
@@ -28,9 +26,13 @@ class SpawningPool
 
     # Wait for the channel to be empty before we resume the fiber.
     def flush
+      # the flush might cause cpu run to 100%
+      # if the queue of message if waiting for another
+      # thread to consume.
       until empty?
         Fiber.scheduler.yield
       end
+
       self
     end
 

@@ -225,34 +225,21 @@ class SpawningPool
         duration = 0
       end
 
-      # if @readable.empty? && @writable.empty? && duration.nil?
-      #   # wait for another thread to wake this thread up
-      #   # if no IO are in progress in any fiber.
-      #   Thread.stop
-      #   return
-      # end
-
       begin
         readables = @readable.keys
         readables <<  @intr_io_r
 
         readable, writable, = ::IO.select(readables, @writable.keys, nil, duration)
       rescue IOError, Errno::EBADF => e
-        pp e
-        pp readables
-        pp @writable.keys
-        @io_error = true
-        # exit 0
-        # @intr_io_r = nil
         # EBADF can appears in case the io pipe has been closed by another thread
-        # do nothing.
+        # do nothing. Not sure it is the write behavior here.
       end
 
       ready = Hash.new(0)
 
       readable&.each do |io|
         if io == @intr_io_r
-          # consume the pipe.
+          # consume the pipe without waking up fiber.
           io.read_nonblock(1, exception: false)
           next
         end

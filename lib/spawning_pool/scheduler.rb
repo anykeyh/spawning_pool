@@ -6,19 +6,22 @@ class SpawningPool
   # This is ported from the awesome Async project.
   class Scheduler
 
-    def self.fiber_map
-      @fiber_map ||= {}
+    class << self
+      def fiber_map
+        @fiber_map ||= {}
+      end
+
+      def scheduler_map
+        @scheduler_map ||= {}
+      end
+
+      def for(fiber)
+        @scheduler_map[@fiber_map[fiber]]
+      end
     end
 
-    def self.scheduler_map
-      @scheduler_map ||= {}
-    end
 
-    def self.for(fiber)
-      @scheduler_map[@fiber_map[fiber]]
-    end
-
-    attr_reader :thread, :spawning_pool, :loop
+    attr_reader :thread, :loop, :spawning_pool
 
 
     def initialize(spawning_pool)
@@ -29,8 +32,6 @@ class SpawningPool
 
       @blocked = 0
       @timers = ::Timers::Group.new
-
-      set_tvar(:_tchilds, [])
 
       @spawning_pool = spawning_pool
       @spawned_count = 0
