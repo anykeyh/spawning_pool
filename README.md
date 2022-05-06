@@ -33,37 +33,48 @@ end
 Spawn one (or more fibers):
 
 ```ruby
-pool.spawn do
+require "open-uri"
+
+SpawningPool do
+  stop = false
+
+  pool.spawn do
     # Spawn and run the fiber now
     puts "this is a fiber"
     # The fiber won't keep the hand on IO operations...
-    open("http://www.ruby-lang.org/") {|f|
-        f.each_line {|line| p line}
-    }
-end
-
-# so you can perform other operations in the mean time
-pool.spawn do
-    loop do
-        puts "perform other operation..."
-        sleep 0.1
+    URI.open("https://www.ruby-lang.org/") do |f|
+        f.each_line {|line| puts line}
     end
+    stop = true
+  end
+
+  # so you can perform other operations in the mean time
+  pool.spawn do
+    until stop do
+        puts "..."
+        sleep 0.01
+    end
+  end
 end
+```
 
-# using optional channel as entry point for your spawner will run the code
-# everytime a message is received:
+Using optional `channel` as entry point for your _spawner_ will run the block
+everytime a message is received:
 
-channel = pool.channel
+```ruby
+SpawningPool do
+  channel = pool.channel
 
-# default worker count is 1, meaning non parallel processing of the messages
-# of the channel.
-pool.spawn(channel, workers: 32) do |message|
-    puts "I received a message: #{message}"
-    sleep 1
+  # default worker count is 1, meaning non parallel processing of the messages
+  # of the channel.
+  pool.spawn(channel, workers: 32) do |message|
+      puts "I received a message: #{message}"
+      sleep 1
+  end
+
+  32.times{ |x| channel << "message #{x}" }
+  channel.close # Don't forget to close the channel so the spawn will not hang.
 end
-
-32.times{ |x| channel << "here you are #{x}" }
-# will run in ~1 second because of 32 workers.
 ```
 
 ### `channel` method
