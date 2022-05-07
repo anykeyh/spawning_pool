@@ -44,7 +44,6 @@ class SpawningPool
       @intr_io_r, @intr_io_w = IO.pipe
 
       @ready = []
-      @mutex = Mutex.new
     end
 
     def close
@@ -80,7 +79,7 @@ class SpawningPool
     # Transfer from the current fiber to the specified fiber. Put the current fiber into the ready list.
     def resume(fiber, *arguments)
       queue = Queue.new(Fiber.current)
-      @mutex.synchronize { @ready.push(queue) }
+      @ready.push(queue)
 
       fiber.transfer(*arguments)
     end
@@ -95,13 +94,13 @@ class SpawningPool
     # Append the given fiber into the ready list.
     def push(fiber)
       queue = Queue.new(fiber)
-      @mutex.synchronize { @ready.push(queue) }
+      @ready.push(queue)
     end
 
     # Transfer to the given fiber and raise an exception. Put the current fiber into the ready list.
     def raise(fiber, *arguments)
       queue = Queue.new(fiber, arguments)
-      @mutex.synchronize { @ready.push(queue) }
+      @ready.push(queue)
     end
 
     def ready?
@@ -197,10 +196,8 @@ class SpawningPool
 
       ready = nil
 
-      @mutex.synchronize do
-        ready = @ready
-        @ready = []
-      end
+      ready = @ready
+      @ready = []
 
       ready.each do |fiber|
         fiber.transfer if fiber.alive?
