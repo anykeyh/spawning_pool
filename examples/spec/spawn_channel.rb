@@ -1,4 +1,4 @@
-require_relative "../lib/spawning_pool"
+require_relative "../../lib/spawning_pool"
 
 SpawningPool do
   channel = pool.channel

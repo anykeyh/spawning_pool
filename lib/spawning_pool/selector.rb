@@ -109,8 +109,6 @@ class SpawningPool
     end
 
     def io_wait(fiber, io, events)
-      raise "MEH" if @io_error
-
       remove_readable = remove_writable = false
 
       if (events & READABLE) > 0 or (events & PRIORITY) > 0

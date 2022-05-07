@@ -32,9 +32,9 @@ RSpec.describe SpawningPool do
   it "can communicate between two fibers" do
     sum = 0
 
-    ichannel = SpawningPool.channel(capacity: 10)
-
     SpawningPool do
+      ichannel = SpawningPool.channel(capacity: 10)
+
       pool.spawn do
         100.times{ |x| ichannel << x }
         ichannel << nil
@@ -53,9 +53,9 @@ RSpec.describe SpawningPool do
   it "can spawn some workers" do
     sum = 0
 
-    ichannel = SpawningPool.channel(capacity: 10)
-
     SpawningPool do
+      ichannel = SpawningPool.channel(capacity: 10)
+
       pool.spawn do
         100.times{ |x| ichannel << x }
         ichannel.close
@@ -64,7 +64,6 @@ RSpec.describe SpawningPool do
       pool.spawn(ichannel, workers: 2) do |value|
         sum += value
       end
-
     end
 
     expect(sum).to eq(4950)
@@ -73,9 +72,9 @@ RSpec.describe SpawningPool do
   it "unlimited capacity channel" do
     sum = 0
 
-    ichannel = SpawningPool.channel
-
     SpawningPool do
+      ichannel = SpawningPool.channel
+
       pool.spawn do
         time = Time.now.to_f
         10.times{ |x|
@@ -96,24 +95,29 @@ RSpec.describe SpawningPool do
   describe "multi-thread" do
     it "multi-thread channel" do
       SpawningPool do
-        ichannel = SpawningPool.channel
+        ichannel = SpawningPool.channel(multithread: true)
         sum = 0
 
-        pool.spawn_thread "sender_thread" do
+        Thread.new do
           time = Time.now.to_f
           50.times{ |x|
             ichannel << x
-            sleep 0.001
+            sleep 0.0001
           }
           ichannel.close
         end
 
-        pool.spawn_thread "receiver_thread" do
-          pool.spawn(ichannel, workers: 32) do |value|
-            sum += value
-            sleep(0.001)
+        32.times.map do
+          Thread.new do
+            loop do
+              value = ichannel.receive
+              sum += value
+              sleep(0.0001)
+            rescue SpawningPool::ClosedChannelError
+              break
+            end
           end
-        end
+        end.map(&:join)
 
       end
     end
@@ -121,10 +125,10 @@ RSpec.describe SpawningPool do
     it "double way multi-thread channel" do
       SpawningPool do
         # Collatz conjecture fun. The worst way you can run it !
-        ichannel = pool.channel capacity: 1
+        ichannel = SpawningPool.channel capacity: 1, multithread: true
         ichannel << 27
 
-        pool.spawn_thread "3x+1" do
+        t1 = Thread.new do
           loop do
             value = ichannel.receive
 
@@ -134,12 +138,12 @@ RSpec.describe SpawningPool do
               ichannel << value # give to the other thread
               sleep 0.001
             end
-          rescue SpawningPool::Channel::ClosedError
+          rescue SpawningPool::ClosedChannelError
             break # do nothing
           end
         end
 
-        pool.spawn_thread "x/2" do
+        t2 = Thread.new do
           loop do
             value = ichannel.receive
 
@@ -156,11 +160,13 @@ RSpec.describe SpawningPool do
             end
           end
         end
+
+        [t1, t2].join
       end
     end
 
     it "unmanaged multi-thread channel" do
-      channel = SpawningPool.channel
+      channel = SpawningPool.channel(multithread: true)
       sum = 0
 
       $stdout.sync = false
@@ -176,7 +182,7 @@ RSpec.describe SpawningPool do
         loop do
           v = channel.receive
           sum += v
-        rescue SpawningPool::Channel::ClosedError
+        rescue SpawningPool::ClosedChannelError
           break
         end
       end
@@ -186,7 +192,7 @@ RSpec.describe SpawningPool do
     end
 
     it "mixed managed and unmanaged multi-thread channel" do
-      channel = SpawningPool.channel(capacity: 5)
+      channel = SpawningPool.channel(capacity: 5, multithread: true)
       sum = 0
 
       t1 = Thread.new do
@@ -202,16 +208,7 @@ RSpec.describe SpawningPool do
       sleep 0.01 while t1.status!='sleep'
       t1.run
 
-      # t2 = Thread.new do
-      #   while t1.alive? do
-      #     sleep 5
-      #     puts
-      #     Thread.list.each {|t| p t}
-      #   end
-      # end
-
       SpawningPool do
-        puts "spawn?"
         pool.spawn(channel, workers: 1) do |message|
           sum += message
         end

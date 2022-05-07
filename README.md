@@ -112,7 +112,7 @@ spawn { # Let's fix this by adding a consumer
 channel.close
 # Consumers will run until the remaining messages in channel are consumed.
 # No new message can be pushed:
-channel << "a new message" # SpawningPool::Channel::ClosedError !
+channel << "a new message" # SpawningPool::ClosedChannelError !
 
 # Using spawn(channel) do ... end syntax as above, we handle directly the close
 # event :

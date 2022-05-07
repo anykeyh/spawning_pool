@@ -4,35 +4,25 @@ require_relative "spawning_pool/version"
 
 require_relative "spawning_pool/thread_mutex"
 
+require_relative "spawning_pool/closed_channel_error"
+
+require_relative "spawning_pool/fiber_channel"
+require_relative "spawning_pool/multithread_channel"
+
 require_relative "spawning_pool/selector"
 require_relative "spawning_pool/scheduler"
-require_relative "spawning_pool/channel"
 require_relative "spawning_pool/thread"
 
 class SpawningPool
-  attr_reader :threads
 
-  def initialize(join, &block)
+  def initialize(deamon, &block)
     if Fiber.scheduler
       raise "Error: This thread is already managed by scheduler. Don't use SpawningPool into another SpawningPool."
     end
 
-    @spawned_threads = []
-
-    Thread.current.name = "SpawningPool"
-
-    @thread_id = 0
-    t = spawn_thread(&block)
-    t.join if join
-    @spawned_threads.each(&:join)
-    t
-  end
-
-  def spawn_thread(name = nil, &block)
     t = SpawningPool::Thread.new(self, &block)
-    @spawned_threads << t
-
-    t.name = name || "spawning_pool #{(@thread_id += 1)}"
+    Thread.current.name = "SpawningPool"
+    t.join unless deamon
     t
   end
 
@@ -44,7 +34,7 @@ class SpawningPool
         Fiber.scheduler.fiber do
           loop do
             yield channel.receive
-          rescue SpawningPool::Channel::ClosedError
+          rescue SpawningPool::ClosedChannelError
             break
           end
         end
@@ -52,12 +42,16 @@ class SpawningPool
     end
   end
 
-  def self.channel(capacity: 0)
-    SpawningPool::Channel.new(capacity: capacity)
+  def self.channel(capacity: 0, multithread: false)
+    if multithread
+      MultithreadChannel.new(capacity: capacity)
+    else
+      FiberChannel.new(capacity: capacity)
+    end
   end
 
-  def channel(capacity: 0)
-    self.class.channel(capacity: capacity)
+  def channel(capacity: 0, multithread: false)
+    self.class.channel(capacity: capacity, multithread: multithread)
   end
 
   def timeout(time, &block)
@@ -73,8 +67,8 @@ class SpawningPool
   end
 end
 
-def SpawningPool(join = true, &block)
-  SpawningPool.new(join, &block)
+def SpawningPool(deamon: false, &block)
+  SpawningPool.new(deamon, &block)
 end
 
 def pool
