@@ -1,39 +1,105 @@
+require 'timeout'
+
 class SpawningPool
   class Channel
     class ClosedError < RuntimeError; end
 
     def initialize(capacity: 0)
+      @messages   = Queue.new
       @capacity   = capacity
       @closed     = false
 
-      @messages   = Queue.new
+      @push_mutex = Mutex.new
+      @push_cv = ConditionVariable.new
 
-      @pushers    = Queue.new
-      @receivers  = Queue.new
+      @rcv_mutex = Mutex.new
+      @rcv_cv = ConditionVariable.new
+
+      @empty_mutex = Mutex.new
+      @empty_cv = ConditionVariable.new
+
+      @fibers = {}
     end
 
-    def wakeup(fiber_pool)
-      fiber = fiber_pool.pop(true) rescue return
+    def push(message)
+      raise ClosedError if closed?
 
-      Scheduler.for(fiber).unblock(nil, fiber)
-    end
+      target = Fiber.scheduler ? Fiber.current : Thread.current
 
-    def wait_as(fiber_pool)
-      fiber_pool << Fiber.current
+      begin
+        @fibers[target] = true
 
-      Fiber.scheduler.block
-    end
+        @push_mutex.synchronize do
+          while full?
+            @rcv_cv.signal
+            @push_cv.wait(@push_mutex)
+          end
 
-    # Wait for the channel to be empty before we resume the fiber.
-    def flush
-      # the flush might cause cpu run to 100%
-      # if the queue of message if waiting for another
-      # thread to consume.
-      until empty?
-        Fiber.scheduler.yield
+          raise ClosedError if closed?
+
+          @messages << message
+          @rcv_cv.signal
+
+          self
+        end
+      ensure
+        @fibers.delete(target)
       end
 
-      self
+    end
+
+    def receive
+      raise ClosedError if closed? && empty?
+
+      target = Fiber.scheduler ? Fiber.current : Thread.current
+
+      begin
+        @fibers[target] = true
+
+        @rcv_mutex.synchronize do
+          begin
+            while empty?
+              raise ClosedError if closed?
+
+              @push_cv.signal
+              @rcv_cv.wait(@rcv_mutex)
+            end
+
+            msg = @messages.pop(true)
+
+            @push_cv.signal
+
+            msg
+          rescue ThreadError # someone took the message before
+            raise ClosedError if closed?
+            retry # we wait again !
+          end
+        end
+      ensure
+        @fibers.delete(target)
+      end
+    end
+
+    def close
+      @closed = true
+
+      @push_cv.broadcast
+      @rcv_cv.broadcast
+
+      @empty_mutex.synchronize do
+        until @messages.empty?
+          @empty_cv.wait(@empty_mutex)
+        end
+      end
+
+      @fibers.each do |key, _|
+        if key.is_a?(Thread)
+          key.raise(ClosedError)
+        else
+          fiber = Scheduler.for(key)
+          fiber&.raise(key, ClosedError)
+        end
+      end
     end
 
     def full?
@@ -41,56 +107,15 @@ class SpawningPool
     end
 
     def empty?
-      @messages.empty?
+      @empty_mutex.synchronize do
+        empty = @messages.empty?
+        empty && @empty_cv.signal
+        empty
+      end
     end
 
     def closed?
       @closed
-    end
-
-    def close
-      @closed = true
-
-      flush
-
-      @pushers.close
-      @receivers.close
-
-      [@pushers, @receivers].each do |arr|
-        loop do
-          fiber = arr.pop(true)
-          Scheduler.for(fiber).raise(fiber, ClosedError)
-        rescue ThreadError
-          break
-        end
-      end
-    end
-
-    def push(message)
-      raise ClosedError if closed?
-
-      # There is case where the fiber can resume but the message queue is
-      # still full due to scheduler waking up twice.
-      wait_as @pushers while full?
-
-      @messages << message
-
-      wakeup @receivers
-
-      self
-    end
-
-    def receive
-      while empty?
-        raise ClosedError if closed?
-        wait_as @receivers
-      end
-
-      msg = @messages.shift
-
-      wakeup @pushers
-
-      msg
     end
 
     alias << push

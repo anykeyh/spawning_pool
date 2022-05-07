@@ -6,6 +6,29 @@ RSpec.describe SpawningPool do
     expect(SpawningPool::VERSION).not_to be nil
   end
 
+  it "condition variable" do
+    SpawningPool do
+      m = Mutex.new
+      c = ConditionVariable.new
+
+      pool.spawn do
+        m.synchronize do
+          c.wait(m)
+          puts "we waited enough!"
+        end
+      end
+
+      pool.spawn do
+        m.synchronize do
+          sleep 0.5
+          puts "ok bro, your turn!"
+          c.signal
+        end
+      end
+
+    end
+  end
+
   it "can communicate between two fibers" do
     sum = 0
 
@@ -80,7 +103,7 @@ RSpec.describe SpawningPool do
           time = Time.now.to_f
           50.times{ |x|
             ichannel << x
-            sleep 0.01
+            sleep 0.001
           }
           ichannel.close
         end
@@ -88,7 +111,7 @@ RSpec.describe SpawningPool do
         pool.spawn_thread "receiver_thread" do
           pool.spawn(ichannel, workers: 32) do |value|
             sum += value
-            sleep(0.01)
+            sleep(0.001)
           end
         end
 
@@ -136,6 +159,68 @@ RSpec.describe SpawningPool do
       end
     end
 
+    it "unmanaged multi-thread channel" do
+      channel = SpawningPool.channel
+      sum = 0
+
+      $stdout.sync = false
+
+      t1 = Thread.new do
+        10.times do |x|
+          channel << x
+        end
+        channel.close
+      end
+
+      t2 = Thread.new do
+        loop do
+          v = channel.receive
+          sum += v
+        rescue SpawningPool::Channel::ClosedError
+          break
+        end
+      end
+
+      [t1, t2].map(&:join)
+      expect(sum).to eq(45)
+    end
+
+    it "mixed managed and unmanaged multi-thread channel" do
+      channel = SpawningPool.channel(capacity: 5)
+      sum = 0
+
+      t1 = Thread.new do
+        Thread.stop
+        puts "let's start"
+        100.times do |x|
+          channel << x
+        end
+        puts "done sent?"
+        channel.close
+      end
+      t1.name = "SenderThread"
+      sleep 0.01 while t1.status!='sleep'
+      t1.run
+
+      # t2 = Thread.new do
+      #   while t1.alive? do
+      #     sleep 5
+      #     puts
+      #     Thread.list.each {|t| p t}
+      #   end
+      # end
+
+      SpawningPool do
+        puts "spawn?"
+        pool.spawn(channel, workers: 1) do |message|
+          sum += message
+        end
+      end
+
+      t1.join
+      expect(sum).to eq(4950)
+
+    end
 
   end
 end

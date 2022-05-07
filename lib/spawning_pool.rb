@@ -64,6 +64,10 @@ class SpawningPool
     Fiber.scheduler.timeout(time, &block)
   end
 
+  def self.timeout(time, &block)
+    Fiber.scheduler.timeout(time, &block)
+  end
+
   def self.current
     Fiber.scheduler.spawning_pool
   end
