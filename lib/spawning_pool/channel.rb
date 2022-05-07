@@ -80,21 +80,24 @@ class SpawningPool
       end
     end
 
-    def close
+    def close(now = false)
       @closed = true
 
       @push_cv.broadcast
       @rcv_cv.broadcast
 
-      @empty_mutex.synchronize do
-        until @messages.empty?
-          @empty_cv.wait(@empty_mutex)
+      unless now
+        # flush the existing messages...
+        @empty_mutex.synchronize do
+          until @messages.empty?
+            @empty_cv.wait(@empty_mutex)
+          end
         end
       end
 
       @fibers.each do |key, _|
         if key.is_a?(Thread)
-          key.raise(ClosedError)
+          key&.raise(ClosedError)
         else
           fiber = Scheduler.for(key)
           fiber&.raise(key, ClosedError)
