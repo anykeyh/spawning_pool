@@ -123,7 +123,7 @@ Benchmark.bmbm do |x|
   x.report("1T") { nude_test }
   x.report("1T, MF") { fiber_test }
   x.report("1T, MF, CMT") { fiber_multit_test }
-  x.report("MT PUSH, MF RECV") { pusher_external }
+  x.report("1T PUSH, MF RECV") { pusher_external }
   x.report("F PUSH, MT RECV") { puller_external }
   x.report("MT only") { thread_test }
 end
