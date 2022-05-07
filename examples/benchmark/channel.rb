@@ -2,7 +2,7 @@ require "benchmark"
 require "tempfile"
 require_relative "../../lib/spawning_pool"
 
-THREAD_COUNTS = 5
+THREAD_COUNTS = 32
 REPEAT = 1500
 CAPACITY = 32
 
