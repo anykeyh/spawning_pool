@@ -9,8 +9,9 @@ class SpawningPool
       @capacity = capacity
 
       @thread = Thread.current
+      @scheduler = Fiber.scheduler
 
-      if Fiber.scheduler.nil?
+      if @scheduler.nil?
         raise "This is mono-thread only. use SpawningPool.channel(multithread: true) outside of SpawningPool block"
       end
 
@@ -42,7 +43,7 @@ class SpawningPool
         until arr.empty?
           # cancel pusher
           fiber = arr.pop
-          Scheduler.for(fiber).raise(fiber, ClosedChannelError)
+          @scheduler.raise(fiber, ClosedChannelError)
         end
       end
 
@@ -90,18 +91,18 @@ class SpawningPool
     def wakeup(fiber_pool)
       return if fiber_pool.empty?
 
-      fiber = fiber_pool.pop
+      fiber = fiber_pool.shift
 
-      Scheduler.for(fiber).unblock(nil, fiber)
+      @scheduler.unblock(nil, fiber)
     end
 
     def wait_as(fiber_pool)
       fiber_pool << Fiber.current
-      Fiber.scheduler.block
+      @scheduler.block
     end
 
     def flush
-      Fiber.scheduler.yield until empty?
+      @scheduler.yield until empty?
       self
     end
 
