@@ -26,7 +26,7 @@ class SpawningPool
     t
   end
 
-  def spawn(channel = nil, &block)
+  def spawn(channel = nil, workers: 0, &block)
     if channel.nil?
       Fiber.scheduler.fiber(&block)
     else
