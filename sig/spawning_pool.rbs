@@ -1,4 +1,22 @@
-module SpawningPool
+# See the writing guide of rbs: https://github.com/ruby/rbs#guides
+class SpawningPool
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+
+  def initialize(deamon : bool, &block)
+
+  def spawn(channel : MultithreadChannel|FiberChannel, workers: Integer, &block)
+
+  def channel(capacity: Integer, multithread: bool) -> MultithreadChannel|FiberChannel
+
+  def timeout(time : Integer, &block)
+
+  def self.timeout(time : Integer, &block)
+
+  def self.channel(capacity: Integer, multithread: bool) -> MultithreadChannel|FiberChannel
+
+  def self.current : SpawningPool
 end
+
+def SpawningPool(deamon : bool, &block)
+
+def pool : SpawningPool

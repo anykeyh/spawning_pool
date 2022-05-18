@@ -26,16 +26,30 @@ class SpawningPool
     t
   end
 
-  def spawn(channel = nil, workers: 1, &block)
+  def spawn(channel = nil, &block)
     if channel.nil?
       Fiber.scheduler.fiber(&block)
     else
-      workers.times do
+      if workers <= 0
         Fiber.scheduler.fiber do
           loop do
-            yield channel.receive
+            content = channel.receive
+
+            Fiber.scheduler.fiber do
+              yield content
+            end
           rescue SpawningPool::ClosedChannelError
             break
+          end
+        end
+      else
+        workers.times do
+          Fiber.scheduler.fiber do
+            loop do
+              yield channel.receive
+            rescue SpawningPool::ClosedChannelError
+              break
+            end
           end
         end
       end
